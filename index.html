@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>표정 문구</title>
+<style>
+body{margin:0;background:#111;color:#fff;font-family:sans-serif;text-align:center}
+video{width:100%;max-width:480px;transform:scaleX(-1)}
+#emo{font-size:56px;margin:8px}
+#msg{font-size:22px;padding:0 16px;min-height:80px;line-height:1.5}
+button{font-size:20px;padding:12px 28px;margin:8px;border-radius:12px;border:0}
+#cal{display:none}
+#info{font-size:12px;color:#888;padding:8px}
+</style>
+</head>
+<body>
+<button id="start">시작</button>
+<button id="cal">기준 잡기 (무표정)</button>
+<div><video id="v" autoplay playsinline muted></video></div>
+<div id="emo"></div>
+<div id="msg">시작 버튼을 눌러줘</div>
+<div id="info"></div>
+
+<script type="module">
+import {FaceLandmarker, FilesetResolver} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+
+const PHRASES = {
+  happy: [
+    "살짝 웃는 얼굴이 오늘 하루를 밝게 만들어주고 있어 😊",
+    "그 미소 하나로 주변 공기까지 따뜻해지는 것 같아",
+    "좋은 일이 있었나 봐, 표정에서 다 티가 나는데?",
+    "웃는 얼굴 덕분에 오늘 하루가 벌써 절반은 성공이야",
+    "이 기분 그대로 하루 끝까지 쭉 이어가 보자!",
+    "입꼬리가 올라가면 기분도 따라 올라간대, 잘하고 있어",
+    "작은 미소가 오늘 최고의 컨디션 표시야 ✨",
+    "지금 표정, 사진으로 남겨두고 싶을 만큼 좋아 보여",
+    "웃음은 돈 안 드는 최고의 에너지 충전이래 🔋",
+    "마음이 편안해 보여서 보는 나도 기분이 좋아져"
+  ],
+  laugh: [
+    "우와, 활짝 웃었다! 지금 이 순간이 오늘의 하이라이트야 😆",
+    "그 웃음소리가 여기까지 들리는 것 같아, 최고야!",
+    "이렇게 크게 웃을 수 있다니, 오늘 진짜 좋은 날이네",
+    "웃음 폭발! 스트레스는 이미 저 멀리 도망갔어 🏃",
+    "행복 수치가 최대치를 찍었어, 이 기세 그대로 가자!",
+    "환하게 웃는 모습이 오늘 본 것 중에 제일 밝아 ☀️",
+    "웃음은 전염된다더니, 나도 같이 웃고 있는 기분이야",
+    "이런 날은 마음껏 웃어도 돼, 충분히 그럴 자격 있어",
+    "오늘의 웃음 기록 갱신! 이 에너지를 할 일에도 나눠주자 💪",
+    "크게 웃고 나면 머리도 맑아진대, 남은 하루도 화이팅!"
+  ],
+  sad: [
+    "괜찮아, 힘든 날도 결국엔 지나가니까 너무 애쓰지 마",
+    "오늘은 조금 쉬어가도 돼, 지금까지 충분히 잘해왔어",
+    "기운이 없어 보여, 따뜻한 물 한 잔 마시고 잠깐 쉬자",
+    "네 잘못이 아니야, 스스로에게 조금만 더 다정해져 봐",
+    "말하지 않아도 괜찮아, 잠깐 멍하니 쉬는 시간도 필요해",
+    "오늘 하루 정말 수고했어, 이제 조금은 내려놔도 돼",
+    "마음이 무거운 날엔 좋아하는 노래 하나가 도움이 될지도 몰라 🎵",
+    "혼자 끙끙 앓지 말고, 믿는 사람에게 한마디만 건네 볼까?",
+    "구름 낀 날 뒤에는 꼭 맑은 날이 와, 내일은 더 나을 거야",
+    "울적한 기분도 네 마음이 보내는 신호야, 잘 돌봐주자"
+  ],
+  angry: [
+    "심호흡 세 번만 하고 가자, 들이쉬고… 내쉬고…",
+    "화날 만한 일이었겠다, 잠깐 멈추고 숨 돌려보자 ⏸",
+    "물 한 잔 마시고 다시 생각하면 조금 가벼워질 거야 💧",
+    "눈썹에 힘이 잔뜩 들어갔어, 미간을 살짝 풀어볼까?",
+    "그 에너지를 좋은 곳에 쓰면 엄청난 힘이 될 거야 🔥",
+    "지금 결정하지 말고 10분만 있다가 다시 생각해 보자",
+    "찡그린 얼굴도 열심히 살고 있다는 증거야, 잠깐 쉬어가자",
+    "어깨에 힘 빼고 크게 한숨 한 번 쉬어봐, 훨씬 나아질 거야",
+    "짜증 나는 날엔 잠깐 밖에 나가 바람 쐬는 게 최고야 🌬️",
+    "화가 나는 것도 네 마음이 소중하다는 뜻이니까 자연스러운 거야"
+  ],
+  surprised: [
+    "헉! 방금 무슨 일이야? 눈이 완전 동그래졌어 😲",
+    "깜짝 놀랐구나, 예상 못 한 일이 생겼나 봐!",
+    "입이 떡 벌어졌는데? 뭘 본 건지 궁금하다",
+    "놀란 표정 포착! 심장이 쿵 내려앉았지?",
+    "오늘 뭔가 대박인 일이 있었나 봐, 어서 말해줘!",
+    "이렇게 놀란 얼굴은 오랜만이네, 반전이라도 있었어?",
+    "눈이 커진 걸 보니 진짜 신기한 걸 발견했나 봐 👀",
+    "놀라움도 하루를 특별하게 만드는 양념이야",
+    "헉 소리가 여기까지 들려, 진정하고 천천히 말해봐",
+    "세상엔 아직 놀랄 일이 많다는 게 꽤 멋진 일이지 않을까?"
+  ],
+  neutral: [
+    "차분하고 평온한 얼굴이네, 지금 컨디션 좋아 보여 🙂",
+    "조용한 표정 속에 무슨 생각을 하고 있어?",
+    "오늘 하루는 어땠어? 편하게 한마디 해줘도 좋아",
+    "차분함도 큰 능력이야, 흔들리지 않는 모습이 멋져",
+    "살짝 웃어보면 어떨까? 표정이 바뀌면 나도 반응할게 😊",
+    "집중하고 있는 얼굴 같아, 잠깐 어깨도 풀어봐",
+    "무표정도 하나의 표정이야, 지금 마음은 어떤 색이야?",
+    "잔잔한 호수 같은 얼굴이네, 마음이 편안해 보여",
+    "화면 속 너는 지금 아주 평화로워 보여 🌿",
+    "표정을 바꿔볼래? 웃거나 놀란 얼굴을 보여줘!"
+  ]
+};
+const EMOJI = {happy:"🙂", laugh:"😆", sad:"😢", angry:"😠", surprised:"😲", neutral:"😐"};
+const NAME = {happy:"웃음", laugh:"활짝 웃음", sad:"슬픔", angry:"화남", surprised:"놀람", neutral:"무표정"};
+
+const KEYS = ["mouthSmileLeft","mouthSmileRight","mouthFrownLeft","mouthFrownRight",
+  "browDownLeft","browDownRight","eyeWideLeft","eyeWideRight","jawOpen","browInnerUp"];
+
+const videoEl = document.getElementById("v");
+const emoEl = document.getElementById("emo");
+const msgEl = document.getElementById("msg");
+const infoEl = document.getElementById("info");
+const startBtn = document.getElementById("start");
+const calBtn = document.getElementById("cal");
+
+const lastIdx = {};
+let cand = null, cnt = 0, shown = null;
+let landmarker = null;
+let base = {};      // 내 무표정 기준값
+let calib = null;   // 기준 잡는 중일 때만 값이 있음
+
+function pick(e){
+  const a = PHRASES[e];
+  let i;
+  do { i = Math.floor(Math.random()*a.length); } while(a.length>1 && i===lastIdx[e]);
+  lastIdx[e] = i;
+  return a[i];
+}
+
+function show(e){
+  emoEl.textContent = EMOJI[e];
+  msgEl.textContent = pick(e);
+}
+
+// 무표정 기준보다 얼마나 변했는지 (0 이상)
+function classify(s){
+  const d = (n) => Math.max(0, (s[n] || 0) - (base[n] || 0));
+  const smile = (d("mouthSmileLeft") + d("mouthSmileRight"))/2;
+  const frown = (d("mouthFrownLeft") + d("mouthFrownRight"))/2;
+  const brow = (d("browDownLeft") + d("browDownRight"))/2;
+  const wide = (d("eyeWideLeft") + d("eyeWideRight"))/2;
+  const jaw = d("jawOpen");
+  const up = d("browInnerUp");
+  infoEl.textContent = "기준 대비 변화량 → 웃음 " + smile.toFixed(2) +
+    " | 입꼬리내림 " + frown.toFixed(2) +
+    " | 찡그림 " + brow.toFixed(2) +
+    " | 입벌림 " + jaw.toFixed(2) +
+    " | 눈썹올림 " + up.toFixed(2) +
+    " | 눈크게 " + wide.toFixed(2);
+  if(smile > 0.6) return "laugh";
+  if(smile > 0.3) return "happy";
+  if(jaw > 0.25 && (up > 0.25 || wide > 0.25)) return "surprised";
+  if(brow > 0.3) return "angry";
+  if(frown > 0.2 || up > 0.3) return "sad";
+  return "neutral";
+}
+
+function update(e){
+  if(e === cand){ cnt++; } else { cand = e; cnt = 1; }
+  if(cnt >= 10 && e !== shown){
+    shown = e;
+    show(e);
+  }
+}
+
+function loop(){
+  try{
+    if(videoEl.readyState >= 2){
+      const r = landmarker.detectForVideo(videoEl, performance.now());
+      if(r.faceBlendshapes && r.faceBlendshapes.length){
+        const s = {};
+        r.faceBlendshapes[0].categories.forEach((c) => { s[c.categoryName] = c.score; });
+        if(calib){
+          KEYS.forEach((k) => { calib.sum[k] = (calib.sum[k] || 0) + (s[k] || 0); });
+          calib.n++;
+          const left = Math.ceil((2000 - (performance.now() - calib.start)) / 1000);
+          msgEl.textContent = "무표정으로 정면을 봐줘... " + Math.max(left, 1);
+          if(performance.now() - calib.start > 2000 && calib.n >= 10){
+            base = {};
+            KEYS.forEach((k) => { base[k] = calib.sum[k] / calib.n; });
+            calib = null;
+            calBtn.disabled = false;
+            shown = null; cand = null; cnt = 0;
+            emoEl.textContent = "";
+            msgEl.textContent = "기준 완료! 이제 표정을 지어봐";
+          }
+        } else {
+          update(classify(s));
+        }
+      } else {
+        if(shown !== null || calib){
+          msgEl.textContent = "얼굴이 안 보여요. 카메라를 봐줘!";
+          emoEl.textContent = "";
+        }
+        shown = null; cand = null; cnt = 0;
+      }
+    }
+  } catch(e){
+    console.error(e);
+    msgEl.textContent = "분석 에러: " + (e.message || e);
+  }
+  requestAnimationFrame(loop);
+}
+
+msgEl.onclick = () => { if(shown) show(shown); };
+
+calBtn.onclick = () => {
+  calBtn.disabled = true;
+  calib = {n:0, sum:{}, start:performance.now()};
+};
+
+startBtn.onclick = async () => {
+  startBtn.disabled = true;
+  try{
+    msgEl.textContent = "카메라 켜는 중...";
+    videoEl.srcObject = await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}, audio:false});
+    await videoEl.play();
+
+    msgEl.textContent = "모델 불러오는 중... (10~20초 걸릴 수 있어)";
+    const fs = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+    const model = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
+    const make = (d) => FaceLandmarker.createFromOptions(fs, {
+      baseOptions: {modelAssetPath: model, delegate: d},
+      runningMode: "VIDEO",
+      outputFaceBlendshapes: true,
+      numFaces: 1
+    });
+    try{
+      landmarker = await make("GPU");
+    } catch(e){
+      console.warn("GPU 실패, CPU로 재시도", e);
+      landmarker = await make("CPU");
+    }
+
+    startBtn.style.display = "none";
+    calBtn.style.display = "inline-block";
+    msgEl.textContent = "무표정으로 정면을 보고 '기준 잡기'를 눌러줘";
+    loop();
+  } catch(e){
+    console.error(e);
+    msgEl.textContent = "에러: " + (e.message || e);
+    startBtn.disabled = false;
+  }
+};
+</script>
+</body>
+</html>
