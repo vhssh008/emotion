@@ -199,6 +199,13 @@ const NAME  = {happy:"웃음", laugh:"활짝 웃음", sad:"슬픔", angry:"화�
 const KEYS = ["mouthSmileLeft","mouthSmileRight","mouthFrownLeft","mouthFrownRight",
   "browDownLeft","browDownRight","eyeWideLeft","eyeWideRight","jawOpen","browInnerUp"];
 
+/* 무표정 기준값의 최대치 (이보다 큰 값은 "이미 표정을 짓고 있는 것"으로 보고 잘라냄) */
+const CAP = {
+  mouthSmileLeft:0.12, mouthSmileRight:0.12, mouthFrownLeft:0.12, mouthFrownRight:0.12,
+  browDownLeft:0.12, browDownRight:0.12, eyeWideLeft:0.15, eyeWideRight:0.15,
+  jawOpen:0.12, browInnerUp:0.3
+};
+
 /* ---------- 요소 ---------- */
 const $ = (id) => document.getElementById(id);
 const video = $("v"), countEl = $("count"), emoEl = $("emo"), nameEl = $("ename"),
@@ -302,7 +309,7 @@ function decide(votes, total){
   ["laugh","happy","surprised","angry","sad"].forEach((k) => {
     if(votes[k] > bc){ bc = votes[k]; best = k; }
   });
-  if(best && bc >= total * 0.25) return best;
+  if(best && bc >= total * 0.2) return best;
   return "neutral";
 }
 
@@ -396,20 +403,21 @@ async function runRound(){
     }
   });
   if(n < 8){ showResult("fail"); return; }
+  /* 기준값에 상한을 둠: 카운트다운 중에 이미 웃거나 놀란 표정을 지어도 기준이 과하게 커지지 않게 */
   base = {};
-  KEYS.forEach((k) => { base[k] = sum[k] / n; });
+  KEYS.forEach((k) => { base[k] = Math.min(sum[k] / n, CAP[k]); });
 
-  /* 2단계: 2초 동안 표정 측정 */
+  /* 2단계: 2.5초 동안 표정 측정 */
   setState("capture");
   barEl.style.transition = "none";
   barEl.style.width = "0%";
   void barEl.offsetWidth;
-  barEl.style.transition = "width 2s linear";
+  barEl.style.transition = "width 2.5s linear";
   barEl.style.width = "100%";
 
   const votes = {laugh:0, happy:0, surprised:0, angry:0, sad:0, neutral:0};
   let total = 0;
-  await loopFor(2000, () => {
+  await loopFor(2500, () => {
     const s = readFace();
     if(s){ votes[classify(s)]++; total++; }
   });
