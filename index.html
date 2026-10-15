@@ -114,7 +114,7 @@ body:not([data-s="start"]) #start{display:none}
     <div class="mascot">🍀</div>
     <h1>오늘의 표정 한마디</h1>
     <p class="sub">표정과 날씨를 읽고<br>나에게 딱 맞는 한마디를 건네줄게요</p>
-    <div class="faces">😊 😲 😢 😠</div>
+    <div class="faces">😊 😆 😲 😐</div>
     <button id="startBtn" class="btn">시작하기</button>
   </section>
 
@@ -304,9 +304,8 @@ function classify(s){
   }
   if(smile > 0.65 || (smile > 0.5 && jaw > 0.3)) return "laugh";
   if(smile > 0.4) return "happy";
-  if(jaw > 0.45) return "surprised";                 // 입이 크게 벌어지면 놀람
-  if(brow > 0.12) return "angry";                    // 눈썹을 찡그리면 화남
-  if(frown > 0.15 || up > 0.35) return "sad";        // 입꼬리 내림 또는 눈썹 안쪽 올림이면 슬픔
+  if(jaw > 0.4) return "surprised";                  // 입이 크게 벌어지면 놀람
+  // 슬픔·화남은 얼굴 변화가 작고 사람마다 달라서 인식하지 않음 (나머지는 무표정)
   return "neutral";
 }
 
