@@ -122,7 +122,6 @@ body:not([data-s="start"]) #start{display:none}
     <div class="cam">
       <video id="v" autoplay playsinline muted></video>
       <div id="loading" class="overlay"><div class="spin">🍀</div><p>준비 중이에요</p></div>
-      <div id="count" class="overlay"></div>
       <div id="hint">지금 표정을 보여줘요!</div>
       <div id="bar"></div>
     </div>
@@ -196,25 +195,14 @@ const GENERIC = {
 const EMOJI = {happy:"🙂", laugh:"😆", sad:"😢", angry:"😠", surprised:"😲", neutral:"😐"};
 const NAME  = {happy:"웃음", laugh:"활짝 웃음", sad:"슬픔", angry:"화남", surprised:"놀람", neutral:"무표정"};
 
-const KEYS = ["mouthSmileLeft","mouthSmileRight","mouthFrownLeft","mouthFrownRight",
-  "browDownLeft","browDownRight","eyeWideLeft","eyeWideRight","jawOpen","browInnerUp"];
-
-/* 무표정 기준값의 최대치 (이보다 큰 값은 "이미 표정을 짓고 있는 것"으로 보고 잘라냄) */
-const CAP = {
-  mouthSmileLeft:0.12, mouthSmileRight:0.12, mouthFrownLeft:0.12, mouthFrownRight:0.12,
-  browDownLeft:0.12, browDownRight:0.12, eyeWideLeft:0.15, eyeWideRight:0.15,
-  jawOpen:0.12, browInnerUp:0.3
-};
-
 /* ---------- 요소 ---------- */
 const $ = (id) => document.getElementById(id);
-const video = $("v"), countEl = $("count"), emoEl = $("emo"), nameEl = $("ename"),
+const video = $("v"), emoEl = $("emo"), nameEl = $("ename"),
       msgEl = $("msg"), chipEl = $("chip"), tipEl = $("tip"), barEl = $("bar"),
       infoEl = $("info"), startBtn = $("startBtn"), retryBtn = $("retryBtn"), resultEl = $("result");
 const DEBUG = location.search.includes("debug");
 
 let landmarker = null;
-let base = {};
 let wx = null;
 const lastIdx = {};
 
@@ -284,7 +272,7 @@ function readFace(){
 }
 
 function classify(s){
-  const d = (n) => Math.max(0, (s[n] || 0) - (base[n] || 0));
+  const d = (n) => s[n] || 0;   // 기준 보정 없이 얼굴 수치(0~1)를 그대로 사용
   const smile = (d("mouthSmileLeft") + d("mouthSmileRight")) / 2;
   const frown = (d("mouthFrownLeft") + d("mouthFrownRight")) / 2;
   const brow = (d("browDownLeft") + d("browDownRight")) / 2;
@@ -295,11 +283,11 @@ function classify(s){
     infoEl.textContent = "웃음 " + smile.toFixed(2) + " | 입꼬리내림 " + frown.toFixed(2) + " | 찡그림 " + brow.toFixed(2) +
       " | 입벌림 " + jaw.toFixed(2) + " | 눈썹올림 " + up.toFixed(2) + " | 눈크게 " + wide.toFixed(2);
   }
-  if(smile > 0.5 || (smile > 0.35 && jaw > 0.25)) return "laugh";
-  if(smile > 0.3) return "happy";
-  if(jaw > 0.25 && (up > 0.25 || wide > 0.25)) return "surprised";
-  if(brow > 0.3) return "angry";
-  if(frown > 0.2 || up > 0.3) return "sad";
+  if(smile > 0.65 || (smile > 0.5 && jaw > 0.3)) return "laugh";
+  if(smile > 0.4) return "happy";
+  if(jaw > 0.35 && (up > 0.3 || wide > 0.3)) return "surprised";
+  if(brow > 0.45) return "angry";
+  if(frown > 0.25 || up > 0.7) return "sad";
   return "neutral";
 }
 
@@ -309,7 +297,7 @@ function decide(votes, total){
   ["laugh","happy","surprised","angry","sad"].forEach((k) => {
     if(votes[k] > bc){ bc = votes[k]; best = k; }
   });
-  if(best && bc >= total * 0.2) return best;
+  if(best && bc >= total * 0.3) return best;
   return "neutral";
 }
 
@@ -366,14 +354,7 @@ function showError(e){
   setState("error");
 }
 
-/* ---------- 카운트다운 + 측정 ---------- */
-function showCount(n){
-  countEl.textContent = n;
-  countEl.style.animation = "none";
-  void countEl.offsetWidth;
-  countEl.style.animation = "pop .9s ease both";
-}
-
+/* ---------- 표정 측정 (한 번 측정하면 결과를 고정) ---------- */
 function loopFor(ms, onFrame){
   return new Promise((resolve) => {
     const t0 = performance.now();
@@ -389,35 +370,18 @@ function loopFor(ms, onFrame){
 
 async function runRound(){
   resultEl.classList.remove("in");
-  setState("count");
 
-  /* 1단계: 3,2,1 동안 무표정 기준 측정 */
-  const sum = {};
-  let n = 0, last = 0;
-  await loopFor(3000, (el) => {
-    const num = 3 - Math.floor(el / 1000);
-    if(num !== last){ last = num; showCount(num); }
-    if(el > 600){
-      const s = readFace();
-      if(s){ KEYS.forEach((k) => { sum[k] = (sum[k] || 0) + (s[k] || 0); }); n++; }
-    }
-  });
-  if(n < 8){ showResult("fail"); return; }
-  /* 기준값에 상한을 둠: 카운트다운 중에 이미 웃거나 놀란 표정을 지어도 기준이 과하게 커지지 않게 */
-  base = {};
-  KEYS.forEach((k) => { base[k] = Math.min(sum[k] / n, CAP[k]); });
-
-  /* 2단계: 2.5초 동안 표정 측정 */
+  /* 3초 동안 표정을 측정하고, 가장 많이 나온 표정으로 결과를 고정 */
   setState("capture");
   barEl.style.transition = "none";
   barEl.style.width = "0%";
   void barEl.offsetWidth;
-  barEl.style.transition = "width 2.5s linear";
+  barEl.style.transition = "width 3s linear";
   barEl.style.width = "100%";
 
   const votes = {laugh:0, happy:0, surprised:0, angry:0, sad:0, neutral:0};
   let total = 0;
-  await loopFor(2500, () => {
+  await loopFor(3000, () => {
     const s = readFace();
     if(s){ votes[classify(s)]++; total++; }
   });
