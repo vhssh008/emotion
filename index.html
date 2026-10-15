@@ -224,21 +224,39 @@ function weatherInfo(code){
   return {kind:"cloudy", icon:"☁️", label:"흐림"};
 }
 
+let wxError = "";   // 날씨를 못 가져온 이유 (결과 화면에 표시)
+
 function getPosition(){
   return new Promise((resolve) => {
-    if(!navigator.geolocation){ resolve(null); return; }
+    if(!navigator.geolocation){ resolve({err:"unavailable"}); return; }
     navigator.geolocation.getCurrentPosition(
-      (p) => resolve(p.coords),
-      () => resolve(null),
+      (p) => resolve({lat:p.coords.latitude, lon:p.coords.longitude}),
+      (e) => { console.warn("위치 실패", e); resolve({err: e.code === 1 ? "denied" : (e.code === 3 ? "timeout" : "unavailable")}); },
       {timeout: 10000, maximumAge: 600000}
     );
   });
 }
 
+/* 기기에서 위치를 못 찾을 때(주로 PC)만 대략적인 위치(IP 기준)로 대신함 */
+async function ipPosition(){
+  try{
+    const j = await fetch("https://ipwho.is/").then((r) => r.json());
+    if(j && j.success !== false && j.latitude != null) return {lat:j.latitude, lon:j.longitude};
+  } catch(e){
+    console.warn("IP 위치 실패", e);
+  }
+  return null;
+}
+
 async function fetchWeather(){
-  const c = await getPosition();
-  if(!c) return null;
-  const lat = c.latitude.toFixed(2), lon = c.longitude.toFixed(2);   // 대략적인 위치만 사용
+  wxError = "";
+  let pos = await getPosition();
+  if(pos.err){
+    if(pos.err === "denied"){ wxError = "위치 권한이 꺼져 있어요"; return null; }
+    pos = await ipPosition();
+    if(!pos){ wxError = "위치를 찾지 못했어요"; return null; }
+  }
+  const lat = pos.lat.toFixed(2), lon = pos.lon.toFixed(2);   // 대략적인 위치만 사용
   try{
     const wReq = fetch("https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon +
       "&current=temperature_2m,weather_code&timezone=auto").then((r) => r.json());
@@ -255,6 +273,7 @@ async function fetchWeather(){
     return {name: name || null, temp: w.current.temperature_2m, kind: info.kind, icon: info.icon, label: info.label};
   } catch(e){
     console.warn("날씨 실패", e);
+    wxError = "날씨 정보를 불러오지 못했어요";
     return null;
   }
 }
@@ -330,7 +349,7 @@ function showResult(e){
       else if(wx.temp >= 28) tipEl.textContent = "💧 오늘 꽤 더워요, 물 자주 마셔요!";
       else tipEl.textContent = "";
     } else {
-      chipEl.textContent = "🌥️ 위치를 허용하면 날씨도 함께 반영돼요";
+      chipEl.textContent = "🌥️ " + (wxError || "위치를 허용하면 날씨도 함께 반영돼요");
       tipEl.textContent = "";
     }
   }
