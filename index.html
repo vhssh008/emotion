@@ -304,9 +304,9 @@ function classify(s){
   }
   if(smile > 0.65 || (smile > 0.5 && jaw > 0.3)) return "laugh";
   if(smile > 0.4) return "happy";
-  if(jaw > 0.35 && (up > 0.3 || wide > 0.3)) return "surprised";
-  if(brow > 0.45) return "angry";
-  if(frown > 0.25 || up > 0.7) return "sad";
+  if(jaw > 0.45) return "surprised";                 // 입이 크게 벌어지면 놀람
+  if(brow > 0.12) return "angry";                    // 눈썹을 찡그리면 화남
+  if(frown > 0.15 || up > 0.35) return "sad";        // 입꼬리 내림 또는 눈썹 안쪽 올림이면 슬픔
   return "neutral";
 }
 
